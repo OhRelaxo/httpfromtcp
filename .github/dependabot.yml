@@ -1,0 +1,16 @@
+version: 2
+updates:
+  - package-ecosystem: "gomod"
+    directory: "/"               # Pfad, wo sich go.mod befindet
+    schedule:
+      interval: "weekly"         # daily | weekly | monthly
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+    # optional:
+    # reviewers: ["team-lead"]
+    # assignees: ["repo-bot"]
+    # ignore:
+    #   - dependency-name: "github.com/some/legacy"
+    #     versions:
+    #       - "1.2.x"
