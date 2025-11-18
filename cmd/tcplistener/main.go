@@ -5,21 +5,33 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"os"
+	"net"
 	"strings"
 )
 
+const (
+	ip   = "127.0.0.1"
+	port = "42069"
+)
+
 func main() {
-	file, err := os.Open("messages.txt")
+	listener, err := net.Listen("tcp", ip+":"+port)
 	if err != nil {
-		log.Fatalf("Failed to Open file: %v", err)
+		log.Fatalf("failed to Listen to tcp connection on IP: %v and Port: %v\n error: %v", ip, port, err)
 	}
-	defer file.Close()
-
-	message := getLinesChannel(file)
-
-	for msg := range message {
-		fmt.Printf("read: %v\n", msg)
+	defer listener.Close()
+	for {
+		conn, err := listener.Accept()
+		if err != nil {
+			log.Printf("failed to Accept message: %v", err)
+			continue
+		}
+		log.Println("a connection has been accepted")
+		message := getLinesChannel(conn)
+		for msg := range message {
+			fmt.Printf("%v\n", msg)
+		}
+		log.Println("the chanel has been closed")
 	}
 }
 
@@ -27,6 +39,8 @@ func getLinesChannel(f io.ReadCloser) <-chan string {
 	message := make(chan string)
 
 	go func() {
+		defer f.Close()
+		defer close(message)
 		var strBuff string
 		for {
 			buffer := make([]byte, 8)
@@ -36,8 +50,6 @@ func getLinesChannel(f io.ReadCloser) <-chan string {
 					if strBuff != "" {
 						message <- strBuff
 					}
-					f.Close()
-					close(message)
 					break
 				}
 				log.Fatalf("Failed to Read file: %v", err)
