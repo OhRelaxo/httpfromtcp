@@ -21,6 +21,7 @@ func main() {
 	}
 	defer listener.Close()
 	for {
+		log.Println("starting tcp listener...")
 		conn, err := listener.Accept()
 		if err != nil {
 			log.Printf("failed to Accept message: %v", err)
