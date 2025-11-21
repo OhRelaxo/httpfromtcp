@@ -1,12 +1,11 @@
 package main
 
 import (
-	"errors"
 	"fmt"
-	"io"
 	"log"
 	"net"
-	"strings"
+
+	"github.com/ohrelaxo/httpfromtcp/internal/request"
 )
 
 const (
@@ -28,52 +27,10 @@ func main() {
 			continue
 		}
 		log.Println("a connection has been accepted")
-		message := getLinesChannel(conn)
-		for msg := range message {
-			fmt.Printf("%v\n", msg)
+		req, err := request.RequestFromReader(conn)
+		if err != nil {
+			log.Printf("request has failed: %v", err)
 		}
-		log.Println("the chanel has been closed")
+		fmt.Printf("Request line:\n- Method: %s\n- Target: %s\n- Version: %s", req.RequestLine.Method, req.RequestLine.RequestTarget, req.RequestLine.HttpVersion)
 	}
-}
-
-func getLinesChannel(f io.ReadCloser) <-chan string {
-	message := make(chan string)
-
-	go func() {
-		defer f.Close()
-		defer close(message)
-		var strBuff string
-		for {
-			buffer := make([]byte, 8)
-			n, err := f.Read(buffer)
-			if err != nil {
-				if errors.Is(err, io.EOF) {
-					if strBuff != "" {
-						message <- strBuff
-					}
-					break
-				}
-				log.Fatalf("Failed to Read file: %v", err)
-			}
-
-			str := string(buffer[:n])
-			parts := strings.Split(str, "\n")
-
-			if len(parts) == 1 {
-				strBuff += parts[0]
-				continue
-			}
-
-			output := strBuff
-			strBuff = parts[len(parts)-1]
-
-			for i := 0; i < len(parts)-1; i++ {
-				output += parts[i]
-			}
-
-			message <- output
-		}
-	}()
-
-	return message
 }
