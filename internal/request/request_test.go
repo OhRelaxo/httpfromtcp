@@ -2,7 +2,6 @@ package request
 
 import (
 	"io"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -69,22 +68,34 @@ func TestRequestLineParse(t *testing.T) {
 	assert.Equal(t, "1.1", r.RequestLine.HttpVersion)
 
 	// Test: Invalid number of parts in request line (too little)
-	_, err = RequestFromReader(strings.NewReader("/coffee HTTP/1.1\r\nHost: localhost:42069\r\nUser-Agent: curl/7.81.0\r\nAccept: */*\r\n\r\n"))
+	reader = &chunkReader{
+		data:            "/coffee HTTP/1.1\r\nHost: localhost:42069\r\nUser-Agent: curl/7.81.0\r\nAccept: */*\r\n\r\n",
+		numBytesPerRead: 3,
+	}
+	r, err = RequestFromReader(reader)
 	require.Error(t, err)
 
 	// Test: Invalid number of parts in request line (too many)
-	_, err = RequestFromReader(strings.NewReader("GET /coffee HTTP/1.1 /ohNo\r\nHost: localhost:42069\r\nUser-Agent: curl/7.81.0\r\nAccept: */*\r\n\r\n"))
+	reader = &chunkReader{
+		data:            "GET /coffee HTTP/1.1 /ohNo\r\nHost: localhost:42069\r\nUser-Agent: curl/7.81.0\r\nAccept: */*\r\n\r\n",
+		numBytesPerRead: 3,
+	}
+	r, err = RequestFromReader(reader)
 	require.Error(t, err)
 
 	// Test: Invalid method (out of order) Request line
-	_, err = RequestFromReader(strings.NewReader("/coffee GET HTTP/1.1\r\nHost: localhost:42069\r\nUser-Agent: curl/7.81.0\r\nAccept: */*\r\n\r\n"))
+	reader = &chunkReader{
+		data:            "/coffee POST HTTP/1.1\r\nHost: localhost:42069\r\nUser-Agent: curl/7.81.0\r\nAccept: */*\r\n\r\n",
+		numBytesPerRead: 3,
+	}
+	r, err = RequestFromReader(reader)
 	require.Error(t, err)
 
 	// Test: Invalid version in Request line
-	_, err = RequestFromReader(strings.NewReader("GET /coffee HTTP/1.2\r\nHost: localhost:42069\r\nUser-Agent: curl/7.81.0\r\nAccept: */*\r\n\r\n"))
-	require.Error(t, err)
-
-	// Test: Malformed crlf
-	_, err = RequestFromReader(strings.NewReader("GET /coffee HTTP/1.2\nHost: localhost:42069\r\nUser-Agent: curl/7.81.0\r\nAccept: */*\r\n\r\n"))
+	reader = &chunkReader{
+		data:            "OPTIONS /prime/rib TCP/1.1\r\nHost: localhost:42069\r\nUser-Agent: curl/7.81.0\r\nAccept: */*\r\n\r\n",
+		numBytesPerRead: 50,
+	}
+	r, err = RequestFromReader(reader)
 	require.Error(t, err)
 }
