@@ -31,9 +31,14 @@ func (h Headers) Parse(data []byte) (n int, done bool, err error) {
 		return 0, false, fmt.Errorf("invalid header name: %s", key)
 	}
 	value, _ := strings.CutPrefix(parts[1], " ")
-	err = h.Set(key, value)
-	if err != nil {
-		return 0, false, err
+
+	if h.Get(key) == "" {
+		err = h.Set(key, value)
+		if err != nil {
+			return 0, false, err
+		}
+	} else {
+		h.Put(key, value)
 	}
 
 	return idx + 2, false, nil
@@ -61,4 +66,8 @@ func isValidHeaderChar(c rune) bool {
 
 func (h Headers) Get(key string) (value string) {
 	return h[strings.ToLower(key)]
+}
+
+func (h Headers) Put(key, value string) {
+	h[strings.ToLower(key)] = h[strings.ToLower(key)] + ", " + value
 }
