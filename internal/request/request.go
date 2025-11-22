@@ -7,10 +7,13 @@ import (
 	"io"
 	"strings"
 	"unicode"
+
+	"github.com/ohrelaxo/httpfromtcp/internal/headers"
 )
 
 type Request struct {
 	RequestLine RequestLine
+	Headers     headers.Headers
 	status      requestState
 }
 
@@ -24,6 +27,7 @@ type requestState int
 
 const (
 	initialized requestState = iota
+	ParsingHeaders
 	done
 )
 
@@ -35,7 +39,7 @@ const (
 func RequestFromReader(reader io.Reader) (*Request, error) {
 	buffer := make([]byte, bufferSize)
 	readToIndex := 0
-	request := Request{status: initialized}
+	request := Request{status: initialized, Headers: make(headers.Headers)}
 	for request.status != done {
 		if readToIndex >= len(buffer) {
 			tempBuffer := make([]byte, len(buffer)*2)
@@ -46,17 +50,20 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 		bytesRead, err := reader.Read(buffer[readToIndex:])
 		if err != nil {
 			if errors.Is(err, io.EOF) {
-				request.status = done
+				if request.status != done {
+					return nil, fmt.Errorf("incomplete request, in state: %d, read n bytes on EOF: %d", request.status, bytesRead)
+				}
 				break
 			}
 			return nil, err
 		}
 		readToIndex += bytesRead
 
-		bytesConsumed, err := request.parse(buffer)
+		bytesConsumed, err := request.parse(buffer[:readToIndex])
 		if err != nil {
 			return nil, err
 		}
+
 		copy(buffer, buffer[bytesConsumed:])
 		readToIndex -= bytesConsumed
 
@@ -122,9 +129,26 @@ func (r *Request) parse(data []byte) (int, error) {
 			return 0, nil
 		}
 
-		r.status = done
+		r.status = ParsingHeaders
 		r.RequestLine = *requestLine
 		return consumed, nil
+	case ParsingHeaders:
+		bytesUsed := 0
+		for bytesUsed < len(data) {
+			consumed, parseDone, err := r.Headers.Parse(data[bytesUsed:])
+			if err != nil {
+				return 0, err
+			}
+			if parseDone {
+				r.status = done
+				return consumed, nil
+			}
+			if consumed == 0 {
+				break
+			}
+			bytesUsed += consumed
+		}
+		return bytesUsed, nil
 	case done:
 		return 0, fmt.Errorf("error: trying to read data in a done state")
 	default:
