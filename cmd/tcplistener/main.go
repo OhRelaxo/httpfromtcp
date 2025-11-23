@@ -31,6 +31,11 @@ func main() {
 		if err != nil {
 			log.Printf("request has failed: %v", err)
 		}
-		fmt.Printf("Request line:\n- Method: %s\n- Target: %s\n- Version: %s", req.RequestLine.Method, req.RequestLine.RequestTarget, req.RequestLine.HttpVersion)
+		fmt.Printf("Request line:\n- Method: %s\n- Target: %s\n- Version: %s\n", req.RequestLine.Method, req.RequestLine.RequestTarget, req.RequestLine.HttpVersion)
+		headersOut := "Headers:\n"
+		for k, v := range req.Headers {
+			headersOut += "- " + k + ": " + v + "\n"
+		}
+		fmt.Println(headersOut)
 	}
 }
