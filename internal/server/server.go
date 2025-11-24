@@ -6,6 +6,7 @@ import (
 	"net"
 
 	"github.com/ohrelaxo/httpfromtcp/internal/request"
+	"github.com/ohrelaxo/httpfromtcp/internal/response"
 )
 
 type Server struct {
@@ -55,10 +56,16 @@ func (s *Server) handle(conn net.Conn) {
 		log.Printf("request failed: %v\n", err)
 		return
 	}
-	resp := []byte("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 13\n\r\nHello World!\n")
-	_, err = conn.Write(resp)
+	err = response.WriteStatusLine(conn, response.Ok)
 	if err != nil {
-		log.Printf("failed to write to connection: %v\n", err)
+		log.Printf("failed to write status line: %v", err)
+		return
+	}
+	headers := response.GetDefaultHeaders(0)
+	err = response.WriteHeaders(conn, headers)
+	if err != nil {
+		log.Printf("failed to wirte headers: %v", err)
+		return
 	}
 	return
 }
