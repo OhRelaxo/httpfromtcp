@@ -1,9 +1,13 @@
 package main
 
 import (
+	"errors"
+	"io"
 	"log"
+	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	"github.com/ohrelaxo/httpfromtcp/internal/request"
@@ -15,6 +19,7 @@ const port = 42069
 
 func main() {
 	server, err := server.Serve(port, handler)
+
 	if err != nil {
 		log.Fatalf("Error starting server: %v", err)
 	}
@@ -28,6 +33,11 @@ func main() {
 }
 
 func handler(w *response.Writer, req *request.Request) {
+	if ok := strings.HasPrefix(req.RequestLine.RequestTarget, "/httpbin/"); ok {
+		proxyHandler(w, req)
+		return
+	}
+
 	var respMessage string
 	var statusCode int
 	switch req.RequestLine.RequestTarget {
@@ -55,5 +65,44 @@ func handler(w *response.Writer, req *request.Request) {
 	_, err = w.WriteBody([]byte(respMessage))
 	if err != nil {
 		log.Println(err)
+	}
+}
+
+func proxyHandler(w *response.Writer, req *request.Request) {
+	targetRequestTarget := strings.TrimPrefix(req.RequestLine.RequestTarget, "/httpbin")
+	newTarget := "http://httpbin.org" + targetRequestTarget
+	resp, err := http.Get(newTarget)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+	log.Printf("Proxing to: %v", newTarget)
+
+	w.WriteStatusLine(200)
+	headers := response.GetDefaultHeaders(0)
+	headers.Delete("Content-Length")
+	if ok := headers.Get("Content-Length"); ok != "" {
+		log.Printf("failed to delete Content-Length header!")
+		return
+	}
+	headers.Set("Transfer-Encoding", "chunked")
+	w.WriteHeaders(headers)
+
+	buff := make([]byte, 1024)
+	for {
+		n, err := resp.Body.Read(buff)
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				w.WriteChunkedBodyDone()
+				return
+			}
+			log.Printf("error while reading from httpbin.org: %v\n", err)
+			continue
+		}
+
+		_, err = w.WriteChunkedBody(buff[:n])
+		if err != nil {
+			log.Printf("error writing Chunked Body: %v\n", err)
+		}
 	}
 }

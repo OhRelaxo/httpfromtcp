@@ -38,7 +38,7 @@ func NewWriter(writer io.Writer) *Writer {
 
 func (w *Writer) WriteStatusLine(statusCode StatusCode) error {
 	if w.status != statusLine {
-		return fmt.Errorf("error: response is getting written in wrong order, current status: %v", w.status)
+		return fmt.Errorf("error: response: %v is getting written in wrong order, current status: %v", statusLine, w.status)
 	}
 	codes := map[StatusCode]string{
 		Ok:                  "OK",
@@ -50,7 +50,7 @@ func (w *Writer) WriteStatusLine(statusCode StatusCode) error {
 	if err != nil {
 		return err
 	}
-	w.status = statusHeaders
+	defer func() { w.status = statusHeaders }()
 	return nil
 }
 
@@ -64,7 +64,7 @@ func GetDefaultHeaders(contentLen int) headers.Headers {
 
 func (w *Writer) WriteHeaders(headers headers.Headers) error {
 	if w.status != statusHeaders {
-		return fmt.Errorf("error: response is getting written in wrong order, current status: %v", w.status)
+		return fmt.Errorf("error: response: %v is getting written in wrong order, current status: %v", statusHeaders, w.status)
 	}
 	if headers == nil {
 		headers = GetDefaultHeaders(0)
@@ -80,13 +80,32 @@ func (w *Writer) WriteHeaders(headers headers.Headers) error {
 	if err != nil {
 		return err
 	}
-	w.status = statusBody
+	defer func() { w.status = statusBody }()
 	return nil
 }
 
 func (w *Writer) WriteBody(p []byte) (int, error) {
 	if w.status != statusBody {
-		return 0, fmt.Errorf("error: response is getting written in wrong order, current status: %v", w.status)
+		return 0, fmt.Errorf("error: response: %v is getting written in wrong order, current status: %v", statusBody, w.status)
 	}
 	return w.writer.Write(p)
+}
+
+func (w *Writer) WriteChunkedBody(p []byte) (int, error) {
+	if w.status != statusBody {
+		return 0, fmt.Errorf("error: response: %v is getting written in wrong order, current status: %v", statusBody, w.status)
+	}
+
+	lenData := len(p)
+	hex := strconv.FormatInt(int64(lenData), 16)
+	body := hex + "\r\n" + string(p) + "\r\n"
+	return w.writer.Write([]byte(body))
+}
+
+func (w *Writer) WriteChunkedBodyDone() (int, error) {
+	if w.status != statusBody {
+		return 0, fmt.Errorf("error: response: %v is getting written in wrong order, current status: %v", statusBody, w.status)
+	}
+
+	return w.writer.Write([]byte("0\r\n\r\n"))
 }

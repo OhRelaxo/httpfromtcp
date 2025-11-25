@@ -59,6 +59,10 @@ func (s *Server) handle(conn net.Conn) {
 	req, err := request.RequestFromReader(conn)
 	if err != nil {
 		log.Printf("request failed: %v\n", err)
+		writer.WriteStatusLine(response.BadRequest)
+		body := fmt.Appendf(nil, "Error parsing request: %v", err)
+		writer.WriteHeaders(response.GetDefaultHeaders(len(body)))
+		writer.WriteBody(body)
 		return
 	}
 

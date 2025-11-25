@@ -71,3 +71,7 @@ func (h Headers) Get(key string) (value string) {
 func (h Headers) Put(key, value string) {
 	h[strings.ToLower(key)] = h[strings.ToLower(key)] + ", " + value
 }
+
+func (h Headers) Delete(key string) {
+	delete(h, strings.ToLower(key))
+}
