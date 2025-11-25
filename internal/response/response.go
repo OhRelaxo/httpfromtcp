@@ -19,6 +19,7 @@ const (
 	statusLine writerStatus = iota
 	statusHeaders
 	statusBody
+	statusTrailer
 )
 
 type StatusCode int
@@ -106,11 +107,15 @@ func (w *Writer) WriteChunkedBodyDone() (int, error) {
 	if w.status != statusBody {
 		return 0, fmt.Errorf("error: response: %v is getting written in wrong order, current status: %v", statusBody, w.status)
 	}
-
+	defer func() { w.status = statusTrailer }()
 	return w.writer.Write([]byte("0\r\n\r\n"))
 }
 
 func (w *Writer) WriteTrailers(h headers.Headers) error {
+	if w.status != statusTrailer {
+		return fmt.Errorf("error: response: %v is getting written in wrong order, current status: %v", statusTrailer, w.status)
+	}
+
 	_, err := w.writer.Write([]byte("0\r\n"))
 	if err != nil {
 		return err

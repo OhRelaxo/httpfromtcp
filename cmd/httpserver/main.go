@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/sha256"
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -99,21 +100,22 @@ func proxyHandler(w *response.Writer, req *request.Request) {
 		}
 		if err != nil {
 			if errors.Is(err, io.EOF) {
-				return
+				break
 			}
 			log.Printf("error while reading from httpbin.org: %v\n", err)
 			continue
 		}
 		w.WriteChunkedBodyDone()
 		respBody = append(respBody, []byte("0\r\n\r\n")...)
+
 	}
 
 	trailers := headerWithOutContentLength()
 	sha := sha256.Sum256(respBody)
-	
 	bodyLength := len(respBody)
-	trailers.Set("X-Content-SHA256", string(sha))
+	trailers.Set("X-Content-SHA256", fmt.Sprintf("%v", sha))
 	trailers.Set("X-Content-Length", string(bodyLength))
+	w.WriteTrailers(trailers)
 }
 
 func headerWithOutContentLength() headers.Headers {
