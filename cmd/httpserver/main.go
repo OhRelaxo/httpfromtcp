@@ -41,6 +41,11 @@ func handler(w *response.Writer, req *request.Request) {
 		return
 	}
 
+	if ok := strings.HasPrefix(req.RequestLine.RequestTarget, "/video"); ok && req.RequestLine.Method == "GET" {
+		videoHandler(w, req)
+		return
+	}
+
 	var respMessage string
 	var statusCode int
 	switch req.RequestLine.RequestTarget {
@@ -127,5 +132,24 @@ func proxyHandler(w *response.Writer, req *request.Request) {
 	err = w.WriteTrailers(trailers)
 	if err != nil {
 		log.Printf("error while writing Trailers: %v", err)
+	}
+}
+
+func videoHandler(w *response.Writer, req *request.Request) {
+	data, err := os.ReadFile("assets/vim.mp4") //file ext.?
+	if err != nil {
+		log.Printf("failed to read file: %v", err)
+		w.WriteStatusLine(response.InternalServerError)
+		return
+	}
+	w.WriteStatusLine(response.Ok)
+	header := response.GetDefaultHeaders(len(data))
+	header.Set("Content-Type", "video/mp4")
+	w.WriteHeaders(header)
+	_, err = w.WriteBody(data)
+	if err != nil {
+		log.Printf("failed to write body: %v", err)
+		w.WriteStatusLine(response.InternalServerError)
+		return
 	}
 }
