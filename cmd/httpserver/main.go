@@ -2,13 +2,13 @@ package main
 
 import (
 	"crypto/sha256"
-	"errors"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 
@@ -72,54 +72,60 @@ func handler(w *response.Writer, req *request.Request) {
 }
 
 func proxyHandler(w *response.Writer, req *request.Request) {
-	targetRequestTarget := strings.TrimPrefix(req.RequestLine.RequestTarget, "/httpbin")
-	newTarget := "http://httpbin.org" + targetRequestTarget
-	resp, err := http.Get(newTarget)
+	target := strings.TrimPrefix(req.RequestLine.RequestTarget, "/httpbin")
+	url := "http://httpbin.org" + target
+	resp, err := http.Get(url)
 	if err != nil {
 		log.Println(err)
 		return
 	}
-	log.Printf("Proxing to: %v", newTarget)
+	defer resp.Body.Close()
+	log.Printf("Proxing to: %v", url)
 
-	w.WriteStatusLine(200)
-	headers := headerWithOutContentLength()
-	headers.Set("Transfer-Encoding", "chunked")
-	headers.Set("Trailer", "X-Content-SHA256, X-Content-Length")
-	w.WriteHeaders(headers)
+	w.WriteStatusLine(response.Ok)
+	header := response.GetDefaultHeaders(0)
+	header.Delete("Content-Length")
+	header.Set("Transfer-Encoding", "chunked")
+	header.Set("Trailer", "X-Content-SHA256, X-Content-Length")
+	w.WriteHeaders(header)
 
 	var respBody []byte
 	buff := make([]byte, 1024)
 	for {
 		n, err := resp.Body.Read(buff)
+		log.Printf("Read %d Bytes", n)
 		if n > 0 {
 			_, err = w.WriteChunkedBody(buff[:n])
 			if err != nil {
 				log.Printf("error writing Chunked Body: %v\n", err)
+				break
 			}
 			respBody = append(respBody, buff[:n]...)
 		}
-		if err != nil {
-			if errors.Is(err, io.EOF) {
-				break
-			}
-			log.Printf("error while reading from httpbin.org: %v\n", err)
-			continue
+		if err == io.EOF {
+			break
 		}
-		w.WriteChunkedBodyDone()
-		respBody = append(respBody, []byte("0\r\n\r\n")...)
-
+		if err != nil {
+			log.Printf("error reading response body: %v\n", err)
+			break
+		}
+	}
+	_, err = w.WriteChunkedBodyDone()
+	if err != nil {
+		log.Printf("error writing chunked body done: %v\n", err)
 	}
 
-	trailers := headerWithOutContentLength()
 	sha := sha256.Sum256(respBody)
-	bodyLength := len(respBody)
-	trailers.Set("X-Content-SHA256", fmt.Sprintf("%v", sha))
-	trailers.Set("X-Content-Length", string(bodyLength))
-	w.WriteTrailers(trailers)
-}
+	log.Printf("%x\n", sha)
 
-func headerWithOutContentLength() headers.Headers {
-	headers := response.GetDefaultHeaders(0)
-	headers.Delete("Content-Length")
-	return headers
+	bodyLength := len(respBody)
+	log.Println(bodyLength)
+
+	trailers := headers.NewHeaders()
+	trailers.Set("X-Content-SHA256", fmt.Sprintf("%x", sha))
+	trailers.Set("X-Content-Length", strconv.Itoa(bodyLength))
+	err = w.WriteTrailers(trailers)
+	if err != nil {
+		log.Printf("error while writing Trailers: %v", err)
+	}
 }

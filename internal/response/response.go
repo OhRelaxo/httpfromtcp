@@ -63,26 +63,16 @@ func GetDefaultHeaders(contentLen int) headers.Headers {
 	return header
 }
 
-func (w *Writer) WriteHeaders(headers headers.Headers) error {
+func (w *Writer) WriteHeaders(h headers.Headers) error {
 	if w.status != statusHeaders {
 		return fmt.Errorf("error: response: %v is getting written in wrong order, current status: %v", statusHeaders, w.status)
 	}
-	if headers == nil {
-		headers = GetDefaultHeaders(0)
+	if h == nil {
+		h = GetDefaultHeaders(0)
 	}
 
-	for k, v := range headers {
-		_, err := w.writer.Write([]byte(k + ": " + v + "\r\n"))
-		if err != nil {
-			return err
-		}
-	}
-	_, err := w.writer.Write([]byte("\r\n"))
-	if err != nil {
-		return err
-	}
 	defer func() { w.status = statusBody }()
-	return nil
+	return w.processHeadersOrTrailers(h)
 }
 
 func (w *Writer) WriteBody(p []byte) (int, error) {
@@ -108,24 +98,35 @@ func (w *Writer) WriteChunkedBodyDone() (int, error) {
 		return 0, fmt.Errorf("error: response: %v is getting written in wrong order, current status: %v", statusBody, w.status)
 	}
 	defer func() { w.status = statusTrailer }()
-	return w.writer.Write([]byte("0\r\n\r\n"))
+	return w.writer.Write([]byte("0\r\n"))
 }
 
 func (w *Writer) WriteTrailers(h headers.Headers) error {
 	if w.status != statusTrailer {
-		return fmt.Errorf("error: response: %v is getting written in wrong order, current status: %v", statusTrailer, w.status)
+		return fmt.Errorf("error: response: %v (Trailers) is getting written in wrong order, current status: %v", statusTrailer, w.status)
 	}
 
-	_, err := w.writer.Write([]byte("0\r\n"))
-	if err != nil {
-		return err
-	}
+	/*
+		_, err := w.writer.Write([]byte("0\r\n"))
+		if err != nil {
+			return err
+		}
+
+	*/
+
+	return w.processHeadersOrTrailers(h)
+}
+
+func (w *Writer) processHeadersOrTrailers(h headers.Headers) error {
 	for k, v := range h {
-		_, err := w.writer.Write([]byte(k + ": " + v))
+		_, err := w.writer.Write([]byte(k + ": " + v + "\r\n"))
 		if err != nil {
 			return err
 		}
 	}
-	_, err = w.writer.Write([]byte("\r\n"))
-	return err
+	_, err := w.writer.Write([]byte("\r\n"))
+	if err != nil {
+		return err
+	}
+	return nil
 }

@@ -67,6 +67,7 @@ func (s *Server) handle(conn net.Conn) {
 	}
 
 	s.handler(writer, req)
+	return
 }
 
 func (s *Server) Close() error {
