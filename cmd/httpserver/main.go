@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/sha256"
 	"errors"
 	"io"
 	"log"
@@ -10,6 +11,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/ohrelaxo/httpfromtcp/internal/headers"
 	"github.com/ohrelaxo/httpfromtcp/internal/request"
 	"github.com/ohrelaxo/httpfromtcp/internal/response"
 	"github.com/ohrelaxo/httpfromtcp/internal/server"
@@ -79,30 +81,43 @@ func proxyHandler(w *response.Writer, req *request.Request) {
 	log.Printf("Proxing to: %v", newTarget)
 
 	w.WriteStatusLine(200)
-	headers := response.GetDefaultHeaders(0)
-	headers.Delete("Content-Length")
-	if ok := headers.Get("Content-Length"); ok != "" {
-		log.Printf("failed to delete Content-Length header!")
-		return
-	}
+	headers := headerWithOutContentLength()
 	headers.Set("Transfer-Encoding", "chunked")
+	headers.Set("Trailer", "X-Content-SHA256, X-Content-Length")
 	w.WriteHeaders(headers)
 
+	var respBody []byte
 	buff := make([]byte, 1024)
 	for {
 		n, err := resp.Body.Read(buff)
+		if n > 0 {
+			_, err = w.WriteChunkedBody(buff[:n])
+			if err != nil {
+				log.Printf("error writing Chunked Body: %v\n", err)
+			}
+			respBody = append(respBody, buff[:n]...)
+		}
 		if err != nil {
 			if errors.Is(err, io.EOF) {
-				w.WriteChunkedBodyDone()
 				return
 			}
 			log.Printf("error while reading from httpbin.org: %v\n", err)
 			continue
 		}
-
-		_, err = w.WriteChunkedBody(buff[:n])
-		if err != nil {
-			log.Printf("error writing Chunked Body: %v\n", err)
-		}
+		w.WriteChunkedBodyDone()
+		respBody = append(respBody, []byte("0\r\n\r\n")...)
 	}
+
+	trailers := headerWithOutContentLength()
+	sha := sha256.Sum256(respBody)
+	
+	bodyLength := len(respBody)
+	trailers.Set("X-Content-SHA256", string(sha))
+	trailers.Set("X-Content-Length", string(bodyLength))
+}
+
+func headerWithOutContentLength() headers.Headers {
+	headers := response.GetDefaultHeaders(0)
+	headers.Delete("Content-Length")
+	return headers
 }
